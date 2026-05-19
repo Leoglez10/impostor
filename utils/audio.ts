@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Modality } from "@google/genai";
+// Audio TTS is now proxied through a serverless endpoint to keep the API key secret.
 
 // Funciones de decodificación requeridas por la guía
 function decode(base64: string) {
@@ -115,60 +115,38 @@ class SoundManager {
    */
   async announceStartingPlayer(nombre: string) {
     this.stopActiveVoice();
-    const getApiKey = () => {
-      const viteKey = typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_API_KEY : undefined;
-      const nodeKey = process.env.API_KEY || process.env.VITE_API_KEY;
-      return viteKey || nodeKey || '';
-    };
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      console.error('Gemini TTS: API key missing. Set VITE_API_KEY in .env.local or API_KEY in server env.');
-      return;
-    }
-    const ai = new GoogleGenAI({ apiKey });
-    
+    const prompt = `Di rápido: ¡Debate iniciado! Empieza ${nombre}.`;
     try {
-      const prompt = `Di rápido: ¡Debate iniciado! Empieza ${nombre}.`;
-      
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Kore' }, 
-            },
-          },
-        },
+      const resp = await fetch('/.netlify/functions/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'tts', texto: prompt }),
       });
-
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      
-      if (base64Audio) {
-        const ctx = this.initContext();
-        const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
-        
-        const source = ctx.createBufferSource();
-        const gainNode = ctx.createGain();
-        gainNode.gain.value = 0.8; 
-        
-        source.buffer = audioBuffer;
-        source.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        
-        this.activeSource = source;
-        source.start();
-        
-        return new Promise((resolve) => {
-          source.onended = () => {
-            if (this.activeSource === source) this.activeSource = null;
-            resolve(true);
-          };
-        });
+      if (!resp.ok) {
+        console.error('TTS server error', resp.status);
+        return;
       }
+      const data = await resp.json();
+      const base64Audio = data.audio;
+      if (!base64Audio) return;
+      const ctx = this.initContext();
+      const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
+      const source = ctx.createBufferSource();
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = 0.8;
+      source.buffer = audioBuffer;
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      this.activeSource = source;
+      source.start();
+      return new Promise((resolve) => {
+        source.onended = () => {
+          if (this.activeSource === source) this.activeSource = null;
+          resolve(true);
+        };
+      });
     } catch (error) {
-      console.error("Error en Gemini TTS:", error);
+      console.error('Error en Gemini TTS (proxy):', error);
     }
   }
 
@@ -177,18 +155,7 @@ class SoundManager {
    */
   async announceGameResult(esVictoria: boolean, nombresImpostores: string[]) {
     this.stopActiveVoice(); 
-    const getApiKey = () => {
-      const viteKey = typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_API_KEY : undefined;
-      const nodeKey = process.env.API_KEY || process.env.VITE_API_KEY;
-      return viteKey || nodeKey || '';
-    };
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      console.error('Gemini TTS: API key missing. Set VITE_API_KEY in .env.local or API_KEY in server env.');
-      return;
-    }
-    const ai = new GoogleGenAI({ apiKey });
-    
+    let listaNombres = "";
     let listaNombres = "";
     if (nombresImpostores.length === 1) {
       listaNombres = nombresImpostores[0];
@@ -205,46 +172,36 @@ class SoundManager {
       const prompt = esVictoria 
         ? `Di rápido y directo: ¡Ganaron! Encontraron ${esPlural ? 'a los impostores que fueron' : 'al impostor que fue'} ${listaNombres}.`
         : `Di rápido y directo: ¡Ganaron los impostores! ${esPlural ? 'Los impostores eran' : 'El impostor era'} ${listaNombres}.`;
-      
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Kore' }, 
-            },
-          },
-        },
+      const resp = await fetch('/.netlify/functions/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'tts', texto: prompt }),
       });
-
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      
-      if (base64Audio) {
-        const ctx = this.initContext();
-        const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
-        
-        const source = ctx.createBufferSource();
-        const gainNode = ctx.createGain();
-        gainNode.gain.value = 0.9; 
-        
-        source.buffer = audioBuffer;
-        source.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        
-        this.activeSource = source;
-        source.start();
-        
-        return new Promise((resolve) => {
-          source.onended = () => {
-            if (this.activeSource === source) this.activeSource = null;
-            resolve(true);
-          };
-        });
+      if (!resp.ok) {
+        console.error('TTS server error', resp.status);
+        return;
       }
+      const data = await resp.json();
+      const base64Audio = data.audio;
+      if (!base64Audio) return;
+      const ctx = this.initContext();
+      const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
+      const source = ctx.createBufferSource();
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = 0.9;
+      source.buffer = audioBuffer;
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      this.activeSource = source;
+      source.start();
+      return new Promise((resolve) => {
+        source.onended = () => {
+          if (this.activeSource === source) this.activeSource = null;
+          resolve(true);
+        };
+      });
     } catch (error) {
-      console.error("Error en Gemini TTS:", error);
+      console.error('Error en Gemini TTS (proxy):', error);
     }
   }
 }
