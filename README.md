@@ -1,5 +1,5 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+  <img width="314" height="681" alt="image" src="https://github.com/user-attachments/assets/1c91ea65-0926-47bf-b3e7-6a6c1abf6cc3" />
 </div>
 
 # El Impostor — Juego social con IA
