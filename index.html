@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>El Impostor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class', // Importante para controlar el modo oscuro manualmente en iOS
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                dark: '#0f172a',
+                primary: '#3b82f6',
+                accent: '#8b5cf6',
+                danger: '#ef4444',
+                success: '#22c55e'
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Resets específicos para iOS */
+      input, textarea, select {
+        -webkit-appearance: none;
+        appearance: none;
+        border-radius: 0; /* Resetear bordes redondeados nativos */
+      }
+      
+      /* Eliminar el resaltado gris al tocar botones en iOS */
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* Asegurar que los inputs en iOS tengan el borde correcto */
+      input[type="text"], input[type="number"] {
+        background-clip: padding-box;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-brand-dark text-slate-100 antialiased selection:bg-brand-accent selection:text-white">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
