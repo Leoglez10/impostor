@@ -156,7 +156,6 @@ class SoundManager {
   async announceGameResult(esVictoria: boolean, nombresImpostores: string[]) {
     this.stopActiveVoice(); 
     let listaNombres = "";
-    let listaNombres = "";
     if (nombresImpostores.length === 1) {
       listaNombres = nombresImpostores[0];
     } else {
