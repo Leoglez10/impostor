@@ -18,8 +18,9 @@ async function decodeAudioData(
   sampleRate: number,
   numChannels: number,
 ): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
+  // Evita "byte length should be a multiple of 2" si la respuesta llega con bytes impares.
+  const dataInt16 = new Int16Array(data.buffer, data.byteOffset, Math.floor(data.byteLength / 2));
+  const frameCount = Math.floor(dataInt16.length / numChannels);
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
 
   for (let channel = 0; channel < numChannels; channel++) {
@@ -44,6 +45,72 @@ class SoundManager {
       this.context.resume();
     }
     return this.context;
+  }
+
+  // Espera a que el contexto esté corriendo. En móvil se suspende al pasar el
+  // teléfono o tras inactividad; sin este await, source.start() no suena.
+  private async ensureRunning() {
+    const ctx = this.initContext();
+    if (ctx.state === 'suspended') {
+      try { await ctx.resume(); } catch { /* ignore */ }
+    }
+    return ctx;
+  }
+
+  // Fallback nativo: gratis, offline y sin cuota. Se usa si Gemini TTS falla.
+  private fallbackSpeak(texto: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !('speechSynthesis' in window)) return resolve(false);
+      try {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(texto);
+        u.lang = 'es-ES';
+        u.rate = 1.05;
+        u.onend = () => resolve(true);
+        u.onerror = () => resolve(false);
+        window.speechSynthesis.speak(u);
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+
+  // Pide audio a Gemini; si algo falla, cae al TTS del navegador. Nunca queda
+  // colgado (siempre resuelve) ni falla en silencio.
+  private async speak(prompt: string, texto: string, gain: number): Promise<boolean> {
+    this.stopActiveVoice();
+    try {
+      const resp = await fetch('/.netlify/functions/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'tts', texto: prompt }),
+      });
+      if (!resp.ok) throw new Error(`TTS server ${resp.status}`);
+      const data = await resp.json();
+      const base64Audio = data.audio;
+      if (!base64Audio) throw new Error('TTS sin audio');
+
+      const ctx = await this.ensureRunning();
+      const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
+      const source = ctx.createBufferSource();
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = gain;
+      source.buffer = audioBuffer;
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      this.activeSource = source;
+      source.start();
+
+      return await new Promise((resolve) => {
+        source.onended = () => {
+          if (this.activeSource === source) this.activeSource = null;
+          resolve(true);
+        };
+      });
+    } catch (error) {
+      console.error('Gemini TTS falló, usando voz del navegador:', error);
+      return this.fallbackSpeak(texto);
+    }
   }
 
   /**
@@ -114,40 +181,8 @@ class SoundManager {
    * Anuncia al jugador inicial usando Gemini TTS
    */
   async announceStartingPlayer(nombre: string) {
-    this.stopActiveVoice();
-    const prompt = `Di rápido: ¡Debate iniciado! Empieza ${nombre}.`;
-    try {
-      const resp = await fetch('/.netlify/functions/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'tts', texto: prompt }),
-      });
-      if (!resp.ok) {
-        console.error('TTS server error', resp.status);
-        return;
-      }
-      const data = await resp.json();
-      const base64Audio = data.audio;
-      if (!base64Audio) return;
-      const ctx = this.initContext();
-      const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
-      const source = ctx.createBufferSource();
-      const gainNode = ctx.createGain();
-      gainNode.gain.value = 0.8;
-      source.buffer = audioBuffer;
-      source.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      this.activeSource = source;
-      source.start();
-      return new Promise((resolve) => {
-        source.onended = () => {
-          if (this.activeSource === source) this.activeSource = null;
-          resolve(true);
-        };
-      });
-    } catch (error) {
-      console.error('Error en Gemini TTS (proxy):', error);
-    }
+    const texto = `¡Debate iniciado! Empieza ${nombre}.`;
+    return this.speak(`Di rápido: ${texto}`, texto, 0.8);
   }
 
   /**
@@ -165,43 +200,11 @@ class SoundManager {
     }
 
     const esPlural = nombresImpostores.length > 1;
-    
-    try {
-      // Frases acortadas según lo solicitado
-      const prompt = esVictoria 
-        ? `Di rápido y directo: ¡Ganaron! Encontraron ${esPlural ? 'a los impostores que fueron' : 'al impostor que fue'} ${listaNombres}.`
-        : `Di rápido y directo: ¡Ganaron los impostores! ${esPlural ? 'Los impostores eran' : 'El impostor era'} ${listaNombres}.`;
-      const resp = await fetch('/.netlify/functions/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'tts', texto: prompt }),
-      });
-      if (!resp.ok) {
-        console.error('TTS server error', resp.status);
-        return;
-      }
-      const data = await resp.json();
-      const base64Audio = data.audio;
-      if (!base64Audio) return;
-      const ctx = this.initContext();
-      const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
-      const source = ctx.createBufferSource();
-      const gainNode = ctx.createGain();
-      gainNode.gain.value = 0.9;
-      source.buffer = audioBuffer;
-      source.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      this.activeSource = source;
-      source.start();
-      return new Promise((resolve) => {
-        source.onended = () => {
-          if (this.activeSource === source) this.activeSource = null;
-          resolve(true);
-        };
-      });
-    } catch (error) {
-      console.error('Error en Gemini TTS (proxy):', error);
-    }
+
+    const texto = esVictoria
+      ? `¡Ganaron! Encontraron ${esPlural ? 'a los impostores que fueron' : 'al impostor que fue'} ${listaNombres}.`
+      : `¡Ganaron los impostores! ${esPlural ? 'Los impostores eran' : 'El impostor era'} ${listaNombres}.`;
+    return this.speak(`Di rápido y directo: ${texto}`, texto, 0.9);
   }
 }
 
