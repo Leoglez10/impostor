@@ -10,6 +10,8 @@ Juego web de deducción social para compartir un solo dispositivo, con palabras 
 
 </div>
 
+> 🇬🇧 **In English:** Single-device social deduction party game with themed words, voting and optional AI-generated words via Gemini. React + TypeScript on Netlify.
+
 > La partida es local y por turnos. El repositorio no implementa salas, cuentas ni sincronización multijugador entre dispositivos.
 
 ## Qué permite hacer
